@@ -4,9 +4,149 @@ const API_BASE_URL =
     ? "http://localhost:3000" // En développement
     : "https://la-ferme-du-chat-noir.vercel.app"; // En production
 
+// ========================================
+// PROTECTION DE LA PAGE ADMIN
+// ========================================
+
+// Vérifier l'authentification au chargement de la page
+document.addEventListener("DOMContentLoaded", () => {
+  const token = sessionStorage.getItem("admin_token");
+
+  if (!token || !token.startsWith("admin_")) {
+    // Rediriger vers la page d'accueil si pas authentifié
+    alert("❌ Accès non autorisé. Veuillez vous connecter.");
+    window.location.href = "index.html";
+    return;
+  }
+
+  // Vérifier la validité du token auprès du serveur
+  verifierTokenAupresServeur(token);
+
+  // Si authentifié, continuer le chargement normal
+  chargerStock();
+  chargerCommandesPreparation();
+
+  // Actualiser les commandes toutes les 30 secondes
+  setInterval(chargerCommandesPreparation, 30000);
+
+  // Message de bienvenue
+  setTimeout(() => {
+    afficherMessage(
+      "🔧 Interface admin prête avec authentification sécurisée !",
+      "success"
+    );
+  }, 500);
+
+  // Ajouter un bouton de déconnexion
+  ajouterBoutonDeconnexion();
+});
+
+// Vérifier la validité du token auprès du serveur
+async function verifierTokenAupresServeur(token) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/admin/verify`, {
+      headers: {
+        Authorization: token,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error("Token invalide");
+    }
+  } catch (error) {
+    console.error("Token invalide:", error);
+    alert("❌ Session expirée. Veuillez vous reconnecter.");
+    sessionStorage.removeItem("admin_token");
+    window.location.href = "index.html";
+  }
+}
+
+// Fonction pour ajouter un bouton de déconnexion
+function ajouterBoutonDeconnexion() {
+  const header = document.querySelector("h1");
+  if (header) {
+    const boutonDeconnexion = document.createElement("button");
+    boutonDeconnexion.innerHTML = "🚪 Déconnexion";
+    boutonDeconnexion.style.cssText = `
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: linear-gradient(135deg, var(--tomato-red), var(--carrot-orange));
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      z-index: 1000;
+    `;
+
+    boutonDeconnexion.addEventListener("click", async () => {
+      if (confirm("Êtes-vous sûr de vouloir vous déconnecter ?")) {
+        // Informer le serveur de la déconnexion
+        const token = sessionStorage.getItem("admin_token");
+        if (token) {
+          try {
+            await fetch(`${API_BASE_URL}/api/admin/logout`, {
+              method: "POST",
+              headers: {
+                Authorization: token,
+              },
+            });
+          } catch (error) {
+            console.error("Erreur lors de la déconnexion côté serveur:", error);
+          }
+        }
+
+        // Supprimer le token et rediriger
+        sessionStorage.removeItem("admin_token");
+        window.location.href = "index.html";
+      }
+    });
+
+    boutonDeconnexion.addEventListener("mouseenter", () => {
+      boutonDeconnexion.style.transform = "translateY(-2px)";
+      boutonDeconnexion.style.boxShadow = "0 5px 15px rgba(244, 67, 54, 0.3)";
+    });
+
+    boutonDeconnexion.addEventListener("mouseleave", () => {
+      boutonDeconnexion.style.transform = "translateY(0)";
+      boutonDeconnexion.style.boxShadow = "none";
+    });
+
+    document.body.appendChild(boutonDeconnexion);
+  }
+}
+
+// Fonction utilitaire pour obtenir les headers d'authentification
+function obtenirHeadersAuth() {
+  const token = sessionStorage.getItem("admin_token");
+  return {
+    "Content-Type": "application/json",
+    Authorization: token,
+  };
+}
+
+// Fonction utilitaire pour gérer les erreurs d'authentification
+function gererErreurAuth(response) {
+  if (response.status === 403 || response.status === 401) {
+    alert("❌ Session expirée. Veuillez vous reconnecter.");
+    sessionStorage.removeItem("admin_token");
+    window.location.href = "index.html";
+    return true;
+  }
+  return false;
+}
+
+// ========================================
+// FONCTIONS API AVEC AUTHENTIFICATION
+// ========================================
+
 // Fonctions utilitaires pour l'API
 async function lireStock() {
   try {
+    // La lecture du stock est publique, pas besoin d'authentification
     const response = await fetch(`${API_BASE_URL}/stock`);
     const data = await response.json();
     return data;
@@ -20,11 +160,12 @@ async function ajouterAuStock(nouvelItem) {
   try {
     const response = await fetch(`${API_BASE_URL}/stock`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: obtenirHeadersAuth(),
       body: JSON.stringify(nouvelItem),
     });
+
+    if (gererErreurAuth(response)) return false;
+
     return response.ok;
   } catch (error) {
     console.error("Erreur ajout stock:", error);
@@ -36,13 +177,54 @@ async function supprimerDuStock(index) {
   try {
     const response = await fetch(`${API_BASE_URL}/stock/${index}`, {
       method: "DELETE",
+      headers: obtenirHeadersAuth(),
     });
+
+    if (gererErreurAuth(response)) return false;
+
     return response.ok;
   } catch (error) {
     console.error("Erreur suppression stock:", error);
     return false;
   }
 }
+
+// Fonctions pour les commandes
+async function lireCommandes() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/commandes-a-preparer`, {
+      headers: obtenirHeadersAuth(),
+    });
+
+    if (gererErreurAuth(response)) return [];
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error("Erreur lecture commandes:", error);
+    return [];
+  }
+}
+
+async function marquerCommePrepareAPI(index) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/commande/statut/${index}`, {
+      method: "PUT",
+      headers: obtenirHeadersAuth(),
+    });
+
+    if (gererErreurAuth(response)) return false;
+
+    return response.ok;
+  } catch (error) {
+    console.error("Erreur sauvegarde commandes:", error);
+    return false;
+  }
+}
+
+// ========================================
+// LOGIQUE MÉTIER INCHANGÉE
+// ========================================
 
 // Ajout au stock
 document.getElementById("form-stock").addEventListener("submit", async (e) => {
@@ -133,33 +315,6 @@ async function supprimerLegume(index) {
   } catch (error) {
     console.error("Erreur suppression:", error);
     afficherMessage("❌ Erreur de connexion", "error");
-  }
-}
-
-// Fonctions pour les commandes
-async function lireCommandes() {
-  try {
-    const response = await fetch(`${API_BASE_URL}/commandes-a-preparer`);
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error("Erreur lecture commandes:", error);
-    return [];
-  }
-}
-
-async function marquerCommePrepareAPI(index) {
-  try {
-    const response = await fetch(`${API_BASE_URL}/commande/statut/${index}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-    return response.ok;
-  } catch (error) {
-    console.error("Erreur sauvegarde commandes:", error);
-    return false;
   }
 }
 
@@ -327,22 +482,14 @@ function afficherMessage(message, type) {
   }, 4000);
 }
 
-// Initialisation au chargement de la page
-document.addEventListener("DOMContentLoaded", () => {
-  chargerStock();
-  chargerCommandesPreparation();
-
-  // Actualiser les commandes toutes les 30 secondes
-  setInterval(chargerCommandesPreparation, 30000);
-
-  // Message de bienvenue
-  setTimeout(() => {
-    afficherMessage("🔧 Interface admin prête avec API backend !", "success");
-  }, 500);
-});
-
 // Fonction de debug
 window.debugStock = async () => {
   const stock = await lireStock();
   console.log("Stock actuel:", stock);
+};
+
+// Fonction de debug pour les tokens
+window.debugAuth = () => {
+  console.log("Token admin:", sessionStorage.getItem("admin_token"));
+  console.log("Headers auth:", obtenirHeadersAuth());
 };

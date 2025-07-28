@@ -1,10 +1,193 @@
-// Configuration API Backend depuis le fichier config
-// Au début du fichier
-const API_BASE_URL = window.CONFIG
-  ? window.CONFIG.API_BASE_URL
-  : "http://localhost:3000";
+// Configuration API Backend dynamique
+const API_BASE_URL =
+  window.location.hostname === "localhost"
+    ? "http://localhost:3000" // En développement
+    : "https://la-ferme-du-chat-noir.vercel.app"; // En production
 
 let commandesClient = [];
+
+// ========================================
+// GESTION SÉCURISÉE DE L'AUTHENTIFICATION ADMIN
+// ========================================
+
+// Fonction pour vérifier le mot de passe via l'API backend
+async function verifierMotDePasseSecurise(motDePasse) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/admin/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ password: motDePasse }),
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      // Stocker le token en session (plus sécurisé que localStorage)
+      sessionStorage.setItem("admin_token", data.token);
+      return true;
+    } else {
+      console.log("Authentification échouée:", data.message);
+      return false;
+    }
+  } catch (error) {
+    console.error("Erreur lors de l'authentification:", error);
+    return false;
+  }
+}
+
+// Fonction pour vérifier si l'utilisateur est déjà connecté
+function estAdminConnecte() {
+  const token = sessionStorage.getItem("admin_token");
+  return token && token.startsWith("admin_");
+}
+
+// Fonction pour obtenir le token admin
+function obtenirTokenAdmin() {
+  return sessionStorage.getItem("admin_token");
+}
+
+// Fonction d'initialisation du modal admin (version sécurisée)
+function initModalAdminSecurise() {
+  const adminLink = document.getElementById("admin-link");
+  const adminModal = document.getElementById("admin-modal");
+  const adminPasswordInput = document.getElementById("admin-password");
+  const adminLoginBtn = document.getElementById("admin-login");
+  const adminCancelBtn = document.getElementById("admin-cancel");
+  const adminError = document.getElementById("admin-error");
+
+  if (
+    !adminLink ||
+    !adminModal ||
+    !adminPasswordInput ||
+    !adminLoginBtn ||
+    !adminCancelBtn ||
+    !adminError
+  ) {
+    console.warn("Éléments du modal admin non trouvés");
+    return;
+  }
+
+  // Ouvrir le modal
+  adminLink.addEventListener("click", (e) => {
+    e.preventDefault();
+
+    // Si déjà connecté, aller directement à la page admin
+    if (estAdminConnecte()) {
+      window.location.href = "admin.html";
+      return;
+    }
+
+    adminModal.style.display = "block";
+    adminPasswordInput.focus();
+    adminError.style.display = "none";
+    adminPasswordInput.value = "";
+  });
+
+  // Fermer le modal
+  adminCancelBtn.addEventListener("click", () => {
+    adminModal.style.display = "none";
+  });
+
+  // Fermer en cliquant à l'extérieur
+  adminModal.addEventListener("click", (e) => {
+    if (e.target === adminModal) {
+      adminModal.style.display = "none";
+    }
+  });
+
+  // Connexion sécurisée
+  adminLoginBtn.addEventListener("click", async () => {
+    const password = adminPasswordInput.value.trim();
+
+    if (!password) {
+      afficherErreurAuth("Veuillez saisir un mot de passe");
+      return;
+    }
+
+    // Afficher un loading
+    const texteOriginal = adminLoginBtn.textContent;
+    adminLoginBtn.textContent = "🔄 Connexion...";
+    adminLoginBtn.disabled = true;
+    adminError.style.display = "none";
+
+    try {
+      const authentificationReussie = await verifierMotDePasseSecurise(
+        password
+      );
+
+      if (authentificationReussie) {
+        adminModal.style.display = "none";
+        afficherMessageClient(
+          "✅ Connexion réussie ! Redirection...",
+          "success"
+        );
+
+        // Redirection après un court délai
+        setTimeout(() => {
+          window.location.href = "admin.html";
+        }, 1000);
+      } else {
+        afficherErreurAuth("Mot de passe incorrect");
+      }
+    } catch (error) {
+      console.error("Erreur de connexion:", error);
+      afficherErreurAuth("Erreur de connexion au serveur");
+    } finally {
+      // Restaurer le bouton
+      adminLoginBtn.textContent = texteOriginal;
+      adminLoginBtn.disabled = false;
+    }
+  });
+
+  // Connexion avec Enter
+  adminPasswordInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") {
+      adminLoginBtn.click();
+    }
+  });
+
+  // Fermer avec Escape
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && adminModal.style.display === "block") {
+      adminModal.style.display = "none";
+    }
+  });
+}
+
+// Fonction pour afficher les erreurs d'authentification
+function afficherErreurAuth(message) {
+  const adminError = document.getElementById("admin-error");
+  const adminPasswordInput = document.getElementById("admin-password");
+
+  if (adminError) {
+    adminError.textContent = `❌ ${message}`;
+    adminError.style.display = "block";
+  }
+
+  if (adminPasswordInput) {
+    adminPasswordInput.value = "";
+    adminPasswordInput.focus();
+    adminPasswordInput.style.borderColor = "var(--tomato-red)";
+    adminPasswordInput.style.animation = "shake 0.5s ease-in-out";
+
+    setTimeout(() => {
+      adminPasswordInput.style.borderColor = "var(--gray-medium)";
+      adminPasswordInput.style.animation = "";
+    }, 500);
+  }
+}
+
+// Fonction pour déconnecter l'admin
+function deconnecterAdmin() {
+  sessionStorage.removeItem("admin_token");
+  window.location.href = "index.html";
+}
+
+// ========================================
+// FONCTIONS API (publiques pour le client)
+// ========================================
 
 // Fonction pour lire le stock depuis le backend
 async function lireStock() {
@@ -17,6 +200,38 @@ async function lireStock() {
     return [];
   }
 }
+
+// Fonction pour valider une commande
+async function validerCommande(commandesValidees, nomClient) {
+  try {
+    // Formatter les commandes pour correspondre au format attendu par le backend
+    const commandesFormatees = commandesValidees.map((cmd) => ({
+      produit: cmd.produit,
+      quantite: cmd.quantite,
+      prix: cmd.prix,
+      unite: cmd.unite,
+      client: nomClient,
+      statut: "à préparer",
+    }));
+
+    const response = await fetch(`${API_BASE_URL}/valider-commande`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(commandesFormatees),
+    });
+
+    return response.ok;
+  } catch (error) {
+    console.error("Erreur validation commande:", error);
+    return false;
+  }
+}
+
+// ========================================
+// LOGIQUE MÉTIER CLIENT
+// ========================================
 
 // Charger le stock pour l'affichage client
 async function chargerStock() {
@@ -81,40 +296,15 @@ async function chargerStock() {
   }
 }
 
-// Fonction pour valider une commande
-async function validerCommande(commandesValidees, nomClient) {
-  try {
-    // Formatter les commandes pour correspondre au format attendu par le backend
-    const commandesFormatees = commandesValidees.map((cmd) => ({
-      produit: cmd.produit,
-      quantite: cmd.quantite,
-      prix: cmd.prix,
-      unite: cmd.unite,
-      client: nomClient,
-      statut: "à préparer",
-    }));
-
-    const response = await fetch(`${API_BASE_URL}/valider-commande`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(commandesFormatees),
-    });
-
-    return response.ok;
-  } catch (error) {
-    console.error("Erreur validation commande:", error);
-    return false;
-  }
-}
-
 // Charger le stock au démarrage
 document.addEventListener("DOMContentLoaded", () => {
   chargerStock();
 
   // Recharger le stock toutes les 30 secondes pour avoir les dernières données
   setInterval(chargerStock, 30000);
+
+  // Initialiser le modal admin
+  setTimeout(initModalAdminSecurise, 100);
 });
 
 // Gérer l'ajout d'articles au panier
@@ -338,108 +528,9 @@ function afficherMessageClient(message, type) {
   }
 }
 
-// ========================================
-// GESTION DU MODAL ADMIN
-// ========================================
-
-function verifierMotDePasse(motDePasse) {
-  console.log("Vérification mot de passe:", motDePasse);
-  console.log("window.CONFIG disponible:", window.CONFIG);
-
-  // En local
-  if (window.location.hostname === "localhost") {
-    return motDePasse === "ferme2025";
-  }
-
-  // En production - attendre que CONFIG soit chargé
-  if (window.CONFIG && window.CONFIG.ADMIN_PASSWORD) {
-    return motDePasse === window.CONFIG.ADMIN_PASSWORD;
-  }
-
-  // Fallback si CONFIG pas encore chargé
-  return motDePasse === "ferme2025";
-}
-
-// Fonction d'initialisation du modal admin
-function initModalAdmin() {
-  const adminLink = document.getElementById("admin-link");
-  const adminModal = document.getElementById("admin-modal");
-  const adminPasswordInput = document.getElementById("admin-password");
-  const adminLoginBtn = document.getElementById("admin-login");
-  const adminCancelBtn = document.getElementById("admin-cancel");
-  const adminError = document.getElementById("admin-error");
-
-  if (
-    !adminLink ||
-    !adminModal ||
-    !adminPasswordInput ||
-    !adminLoginBtn ||
-    !adminCancelBtn ||
-    !adminError
-  ) {
-    console.warn("Éléments du modal admin non trouvés");
-    return;
-  }
-
-  // Ouvrir le modal
-  adminLink.addEventListener("click", (e) => {
-    e.preventDefault();
-    adminModal.style.display = "block";
-    adminPasswordInput.focus();
-    adminError.style.display = "none";
-    adminPasswordInput.value = "";
-  });
-
-  // Fermer le modal
-  adminCancelBtn.addEventListener("click", () => {
-    adminModal.style.display = "none";
-  });
-
-  // Fermer en cliquant à l'extérieur
-  adminModal.addEventListener("click", (e) => {
-    if (e.target === adminModal) {
-      adminModal.style.display = "none";
-    }
-  });
-
-  // Connexion
-  adminLoginBtn.addEventListener("click", () => {
-    const password = adminPasswordInput.value.trim();
-
-    if (verifierMotDePasse(password)) {
-      adminModal.style.display = "none";
-      window.location.href = "admin.html";
-    } else {
-      adminError.style.display = "block";
-      adminPasswordInput.value = "";
-      adminPasswordInput.focus();
-
-      adminPasswordInput.style.borderColor = "var(--tomato-red)";
-      adminPasswordInput.style.animation = "shake 0.5s ease-in-out";
-
-      setTimeout(() => {
-        adminPasswordInput.style.borderColor = "var(--gray-medium)";
-        adminPasswordInput.style.animation = "";
-      }, 500);
-    }
-  });
-
-  // Connexion avec Enter
-  adminPasswordInput.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") {
-      adminLoginBtn.click();
-    }
-  });
-
-  // Fermer avec Escape
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && adminModal.style.display === "block") {
-      adminModal.style.display = "none";
-    }
-  });
-}
-
-// Initialiser le modal quand le DOM est chargé
-document.addEventListener("DOMContentLoaded", () => {
-  setTimeout(initModalAdmin, 100);
-});
+// Export des fonctions utilitaires pour la page admin
+window.adminAuth = {
+  estConnecte: estAdminConnecte,
+  deconnecter: deconnecterAdmin,
+  obtenirToken: obtenirTokenAdmin,
+};
