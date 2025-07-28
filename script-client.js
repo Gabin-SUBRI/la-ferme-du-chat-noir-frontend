@@ -1,5 +1,7 @@
-// Configuration API Backend dynamique
-const API_BASE_URL = window.CONFIG.API_BASE_URL;
+// Configuration API Backend depuis le fichier config
+const API_BASE_URL = window.CONFIG
+  ? window.CONFIG.API_BASE_URL
+  : "http://localhost:3000";
 
 let commandesClient = [];
 
@@ -339,10 +341,20 @@ function afficherMessageClient(message, type) {
 // GESTION DU MODAL ADMIN
 // ========================================
 
-const ADMIN_PASSWORD_HASH = "ZmVybWUyMDI1"; // "ferme2025" encodé
-
 function verifierMotDePasse(motDePasse) {
-  return btoa(motDePasse) === ADMIN_PASSWORD_HASH;
+  // En local, utiliser un mot de passe par défaut
+  if (window.location.hostname === "localhost") {
+    return motDePasse === "ferme2025";
+  }
+
+  // En production, utiliser la variable d'environnement
+  const adminPassword = window.CONFIG ? window.CONFIG.ADMIN_PASSWORD : null;
+  if (!adminPassword) {
+    console.warn("Mot de passe admin non configuré");
+    return false;
+  }
+
+  return motDePasse === adminPassword;
 }
 
 // Fonction d'initialisation du modal admin
