@@ -343,19 +343,21 @@ function afficherMessageClient(message, type) {
 // ========================================
 
 function verifierMotDePasse(motDePasse) {
-  // En local, utiliser un mot de passe par défaut
+  console.log("Vérification mot de passe:", motDePasse);
+  console.log("window.CONFIG disponible:", window.CONFIG);
+
+  // En local
   if (window.location.hostname === "localhost") {
     return motDePasse === "ferme2025";
   }
 
-  // En production, utiliser la variable d'environnement
-  const adminPassword = window.CONFIG ? window.CONFIG.ADMIN_PASSWORD : null;
-  if (!adminPassword) {
-    console.warn("Mot de passe admin non configuré");
-    return false;
+  // En production - attendre que CONFIG soit chargé
+  if (window.CONFIG && window.CONFIG.ADMIN_PASSWORD) {
+    return motDePasse === window.CONFIG.ADMIN_PASSWORD;
   }
 
-  return motDePasse === adminPassword;
+  // Fallback si CONFIG pas encore chargé
+  return motDePasse === "ferme2025";
 }
 
 // Fonction d'initialisation du modal admin
