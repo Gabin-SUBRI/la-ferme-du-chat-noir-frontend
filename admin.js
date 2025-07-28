@@ -2,7 +2,7 @@
 const API_BASE_URL =
   window.location.hostname === "localhost"
     ? "http://localhost:3000" // En développement
-    : "https://ton-backend-deploye.vercel.app"; // En production - À MODIFIER
+    : "https://la-ferme-du-chat-noir.vercel.app"; // En production
 
 // Fonctions utilitaires pour l'API
 async function lireStock() {
