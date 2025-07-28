@@ -1,4 +1,5 @@
 // Configuration API Backend depuis le fichier config
+// Au début du fichier
 const API_BASE_URL = window.CONFIG
   ? window.CONFIG.API_BASE_URL
   : "http://localhost:3000";

@@ -1,7 +1,0 @@
-{
-  "name": "la-ferme-du-chat-noir-frontend",
-  "version": "1.0.0",
-  "scripts": {
-    "build": "node build.js"
-  }
-}
