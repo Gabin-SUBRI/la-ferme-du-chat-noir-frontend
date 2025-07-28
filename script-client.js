@@ -1,8 +1,5 @@
 // Configuration API Backend dynamique
-const API_BASE_URL =
-  window.location.hostname === "localhost"
-    ? "http://localhost:3000" // En développement
-    : "https://la-ferme-du-chat-noir.vercel.app"; // En production
+const API_BASE_URL = window.CONFIG.API_BASE_URL;
 
 let commandesClient = [];
 
