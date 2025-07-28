@@ -127,7 +127,7 @@ function obtenirHeadersAuth() {
     Authorization: token,
   };
 }
-
+//oui
 // Fonction utilitaire pour gérer les erreurs d'authentification
 function gererErreurAuth(response) {
   if (response.status === 403 || response.status === 401) {
